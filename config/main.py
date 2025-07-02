@@ -115,6 +115,8 @@ PORT_SPEED = "speed"
 PORT_TPID = "tpid"
 DEFAULT_TPID = "0x8100"
 PORT_MODE = "switchport_mode"
+WEIGHTED_LAG = "weighted_lag"
+LAG_WEIGHT = "lag_weight"
 
 DOM_CONFIG_SUPPORTED_SUBPORTS = ['0', '1']
 
@@ -2620,8 +2622,11 @@ def portchannel(db, ctx, namespace):
 @click.option('--fast-rate', default='false',
               type=click.Choice(['true', 'false'],
                                 case_sensitive=False))
+@click.option('--weighted-lag', default='false',
+              type=click.Choice(['true', 'false'],
+                                case_sensitive=False))
 @click.pass_context
-def add_portchannel(ctx, portchannel_name, min_links, fallback, fast_rate):
+def add_portchannel(ctx, portchannel_name, min_links, fallback, fast_rate, weighted_lag):
     """Add port channel"""
 
     fvs = {
@@ -2629,6 +2634,7 @@ def add_portchannel(ctx, portchannel_name, min_links, fallback, fast_rate):
         'mtu': '9100',
         'lacp_key': 'auto',
         'fast_rate': fast_rate.lower(),
+        'weighted_lag': weighted_lag.lower(),
     }
 
     if min_links != 0:
@@ -2687,8 +2693,9 @@ def portchannel_member(ctx):
 @portchannel_member.command('add')
 @click.argument('portchannel_name', metavar='<portchannel_name>', required=True)
 @click.argument('port_name', metavar='<port_name>', required=True)
+@click.option('--lag-weight', default=0, type=click.IntRange(0, 100))
 @click.pass_context
-def add_portchannel_member(ctx, portchannel_name, port_name):
+def add_portchannel_member(ctx, portchannel_name, port_name, lag_weight):
     """Add member to port channel"""
     db = ValidatedConfigDBConnector(ctx.obj['db'])
 
@@ -2736,6 +2743,16 @@ def add_portchannel_member(ctx, portchannel_name, port_name):
             if v == port_name:
                 ctx.fail("{} Interface is already member of {} ".format(v,k))    # TODO: MISSING CONSTRAINT IN YANG MODEL
 
+        # Check weighted lag
+        portchannel_entry =  db.get_entry('PORTCHANNEL', portchannel_name)
+        click.echo("\nPortchannel: {}, Weight {}\n".format(portchannel_name, portchannel_entry.get(WEIGHTED_LAG)))
+        if portchannel_entry and portchannel_entry.get(WEIGHTED_LAG) == "true":
+            # Set default weight to 1
+            if lag_weight == 0:
+                lag_weight = 1
+        else:
+            lag_weight = 0
+
         # Dont allow a port to be member of port channel if its speed does not match with existing members
         for k,v in db.get_table('PORTCHANNEL_MEMBER'):
             if k == portchannel_name:
@@ -2746,7 +2763,7 @@ def add_portchannel_member(ctx, portchannel_name, port_name):
                     member_port_speed = member_port_entry.get(PORT_SPEED)
 
                     port_speed = port_entry.get(PORT_SPEED) # TODO: MISSING CONSTRAINT IN YANG MODEL
-                    if member_port_speed != port_speed:
+                    if member_port_speed != port_speed and lag_weight == 0:
                         ctx.fail("Port speed of {} is different than the other members of the portchannel {}"
                                  .format(port_name, portchannel_name))
 
@@ -2789,8 +2806,12 @@ def add_portchannel_member(ctx, portchannel_name, port_name):
             ctx.fail(str(e))
 
     try:
-        db.set_entry('PORTCHANNEL_MEMBER', (portchannel_name, port_name),
+        if lag_weight == 0:
+            db.set_entry('PORTCHANNEL_MEMBER', (portchannel_name, port_name),
                 {'NULL': 'NULL'})
+        else:
+            db.set_entry('PORTCHANNEL_MEMBER', (portchannel_name, port_name),
+                {LAG_WEIGHT: lag_weight})
     except ValueError:
         ctx.fail("Portchannel or interface name is invalid or nonexistent")
 

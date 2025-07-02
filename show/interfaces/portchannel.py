@@ -34,12 +34,13 @@ PORT_CHANNEL_MEMBER_STATE_TABLE_PREFIX = "LAG_MEMBER_TABLE|"
 PORT_CHANNEL_MEMBER_STATUS_FIELD = "status"
 
 class Teamshow(object):
-    def __init__(self, namespace_option, display_option):
+    def __init__(self, namespace_option, display_option, verbose_option):
         self.teams = []
         self.teamsraw = {}
         self.summary = {}
         self.err = None
         self.db = None
+        self.verbose = verbose_option
         self.multi_asic = multi_asic_util.MultiAsic(display_option, namespace_option)
 
     @multi_asic_util.run_on_multi_asic
@@ -72,6 +73,10 @@ class Teamshow(object):
     def get_portchannel_member_status(self, port_channel_name, port_name):
         full_table_id = PORT_CHANNEL_MEMBER_APPL_TABLE_PREFIX + port_channel_name + ":" + port_name
         return self.db.get(self.db.APPL_DB, full_table_id, PORT_CHANNEL_MEMBER_STATUS_FIELD)
+
+    def get_portchannel_member_weight(self, port_channel_name, port_name):
+        full_table_id = "PORTCHANNEL_MEMBER|" + port_channel_name + "|" + port_name
+        return self.db.get(self.db.CONFIG_DB, full_table_id, "lag_weight")
 
     def get_team_id(self, team):
         """
@@ -130,6 +135,10 @@ class Teamshow(object):
                     status = self.get_portchannel_member_status(team, port)
                     pstate = self.db.get_all(self.db.STATE_DB, PORT_CHANNEL_MEMBER_STATE_TABLE_PREFIX+team+'|'+port)
                     selected = True if pstate['runner.aggregator.selected'] == "true" else False
+                    if self.verbose:
+                        weight = self.get_portchannel_member_weight(team, port)
+                        if weight is not None:
+                            info["ports"] += "[w" + weight + "] "
                     if clicommon.get_interface_naming_mode() == "alias":
                         alias = clicommon.InterfaceAliasConverter().name_to_alias(port)
                         info["ports"] += alias + "("
@@ -161,6 +170,6 @@ class Teamshow(object):
 @click.option('--verbose', is_flag=True, help="Enable verbose output")
 def portchannel(namespace, display, verbose):
     """Show PortChannel information"""
-    team = Teamshow(namespace, display)
+    team = Teamshow(namespace, display, verbose)
     team.get_teams_info()
     team.display_summary()
