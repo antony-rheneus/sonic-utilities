@@ -62,6 +62,7 @@ from . import kube
 from . import muxcable
 from . import nat
 from . import sed
+from . import power
 from . import vlan
 from . import vxlan
 from . import plugins
@@ -1927,6 +1928,7 @@ config.add_command(kdump.kdump)
 config.add_command(kube.kubernetes)
 config.add_command(muxcable.muxcable)
 config.add_command(nat.nat)
+config.add_command(power.power_plan)
 config.add_command(vlan.vlan)
 config.add_command(vxlan.vxlan)
 config.add_command(evpn_mh.evpn_mh)
